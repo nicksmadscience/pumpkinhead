@@ -1,4 +1,5 @@
-
+#!/usr/bin/env python 
+"""Code that runs the Halloween robots CDRC and Pumpkinhead."""
 
 
 
@@ -218,22 +219,22 @@ class Robot():
         while True:
             if self.sequenceRunning and len(self.sequence) > 0:
                 thisTime = time.time() - self.soundstart + 0.1  # the extra 0.1 is to sync up the audio with the animation
-                for entryIndex, entry in enumerate(self.sequence):
-                    if thisTime > entry['time'] and thisTime < entry['time'] + 0.2:  # if it falls more than 0.2 seconds behind, skip it; we can afford to skip frames                                                    
+                for frameIndex, frame in enumerate(self.sequence):
+                    if thisTime > frame['time'] and thisTime < frame['time'] + 0.2:  # if it falls more than 0.2 seconds behind, skip it; we can afford to skip frames                                                    
                         print ("{rm} - time: {t}  time in file: {tif}".format(
                             rm=self.robotMode,
                             t=round(thisTime, 3),
-                            tif= entry['time']
+                            tif= frame['time']
                         ))
 
                         if self.serialEnabled and self.robotMode == "pumpkin":
-                            self.sequenceFramePumpkin(entry)
+                            self.sequenceFramePumpkin(frame)
                             
                         elif self.robotMode == "cdrc":
-                            self.sequenceFrameCDRC(entry)
+                            self.sequenceFrameCDRC(frame)
 
                         try:
-                            del self.sequence[entryIndex]  # delete the entry from the list so we can be more efficient as the clip progresses??
+                            del self.sequence[frameIndex]  # delete the frame from the list so we can be more efficient as the clip progresses??
                         except:
                             print ("Error deleting old sequence!")
                             traceback.print_exc()
@@ -252,20 +253,20 @@ class Robot():
             time.sleep(0.01)
 
 
-    def sequenceFramePumpkin(self, entry):
+    def sequenceFramePumpkin(self, frame):
         """Manages all animation frames for Pumpkinhead or similar servo-based bot."""
-        if 'jaw' in entry:
-            jaw = entry['jaw'] * 1.3
+        if 'jaw' in frame:
+            jaw = frame['jaw'] * 1.3
             if not self.nohardware:
                 self.servos.moveServo(2, jaw)
 
-        if 'pan' in entry:
+        if 'pan' in frame:
             if not self.nohardware:
-                self.servos.moveServo(0, entry['pan'])
-            print ("pan: " + str(entry['pan']))
+                self.servos.moveServo(0, frame['pan'])
+            print ("pan: " + str(frame['pan']))
 
-        if 'tilt' in entry:
-            tilt = entry['tilt']
+        if 'tilt' in frame:
+            tilt = frame['tilt']
             tilt = tilt - 10
             if tilt > 105:
                 tilt = 105
@@ -274,16 +275,16 @@ class Robot():
             print ("tilt: " + str(tilt))
 
 
-    def sequenceFrameCDRC(self, entry):
+    def sequenceFrameCDRC(self, frame):
         """Manages all animation frames for CDRC or similar pixel-based bot."""
         self.pixels = [0] * 40
 
-        if 'jaw' in entry:
-            self.cdrc_jaw = entry['jaw']
+        if 'jaw' in frame:
+            self.cdrc_jaw = frame['jaw']
             print ("cdrc_jaw: " + str(self.cdrc_jaw))
 
-        if 'awakeAsleep' in entry:
-            self.cdrc_awakeAsleep = entry['awakeAsleep']
+        if 'awakeAsleep' in frame:
+            self.cdrc_awakeAsleep = frame['awakeAsleep']
             print ("cdrc_awakeAsleep: " + str(self.cdrc_awakeAsleep))
 
             if self.cdrc_awakeAsleep == 127:
@@ -291,8 +292,8 @@ class Robot():
             elif self.cdrc_awakeAsleep == 0:
                 self.mainPixelMultiplier = 0.125
 
-        if 'emotion' in entry:
-            self.cdrc_emotion = entry['emotion']
+        if 'emotion' in frame:
+            self.cdrc_emotion = frame['emotion']
             print ("cdrc_emotion: " + str(self.cdrc_emotion))
 
             if self.cdrc_emotion < 57:  # sad
@@ -328,8 +329,8 @@ class Robot():
 
 
         # eyes looking left and right
-        if 'eyesLeftRight' in entry:
-            self.cdrc_eyesLeftRight = entry['eyesLeftRight']
+        if 'eyesLeftRight' in frame:
+            self.cdrc_eyesLeftRight = frame['eyesLeftRight']
 
             self.pupilIndex = self.cdrc_eyesLeftRight / (8192 / 4)
             pupils = {
@@ -349,13 +350,13 @@ class Robot():
 
         # eyes up or down
         drawEyes = False
-        if 'eyesUp' in entry:
-            cdrc_eyelids = -entry['eyesUp']
+        if 'eyesUp' in frame:
+            cdrc_eyelids = -frame['eyesUp']
             print ("cdrc_eyelids: " + str(cdrc_eyelids))
             drawEyes = True
 
-        if 'eyesDown' in entry:
-            self.cdrc_eyelids = entry['eyesDown']
+        if 'eyesDown' in frame:
+            self.cdrc_eyelids = frame['eyesDown']
             drawEyes = True
 
         if drawEyes == True:
