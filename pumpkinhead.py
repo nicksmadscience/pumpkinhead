@@ -2,11 +2,11 @@
 
 
 
-# import the time standard module
 import time
-
-# import the pygame module
 import pygame
+import traceback
+import serial
+
 
 from threading import Thread
 import json
@@ -14,23 +14,14 @@ import json
 # for choosing between cdrc and the pumpkin head via the command line
 import sys
 
-# for the jaw
-#import alsaaudio, audioop
-
-# for logarithmic function
-import math
-
 # for random pumpkin head movement!
 import random
 import datetime
 
-serialEnabled = sys.argv[2] == "pumpkin"
-if serialEnabled:
-    print ("serial is enabled!!1")
-    import serial
+from flask import Flask, Response
 
-from BaseHTTPServer import BaseHTTPRequestHandler,HTTPServer
-PORT_NUMBER = 8082
+
+
 
 
 
@@ -47,473 +38,10 @@ PORT_NUMBER = 8082
 
 
 
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-
-
-
-for arg in sys.argv:
-    print (arg)
-
-
-masterPixelMultiplier = 0.125
-masterPixelColor      = [255, 255, 255]
-cdrc_emotion       = 64
-cdrc_jaw           = 0
-cdrc_awakeAsleep   = 0
-cdrc_eyesLeftRight = 0
-cdrc_eyelids       = 0
-cdrc_emotionMask   = [1 for x in range(0, 32)]
-cdrc_eyelidMask    = [1 for x in range(0, 32)]
-cdrc_pupilMask     = [1 for x in range(0, 32)]
-
-
-def resetCdrcPixels():
-    global masterPixelMultiplier, masterPixelColor, cdrc_emotion, cdrc_jaw, cdrc_awakeAsleep, cdrc_eyesLeftRight, cdrc_eyelids, cdrc_emotionMask, cdrc_eyelidMask, cdrc_pupilMask
-    #masterPixelMultiplier = 0.125
-    print ("resetting pixels")
-    masterPixelColor      = [255, 255, 255]
-    cdrc_emotion       = 64
-    cdrc_jaw           = 0
-    cdrc_awakeAsleep   = 0
-    cdrc_eyesLeftRight = 0
-    cdrc_eyelids       = 0
-    cdrc_emotionMask   = [1 for x in range(0, 32)]
-    cdrc_eyelidMask    = [1 for x in range(0, 32)]
-    cdrc_pupilMask     = [1 for x in range(0, 32)]
-
-
-robotMode = sys.argv[2]  # choose between micro maestro or fadecandy mode
-print ("ROBOT MODE IS: " + robotMode)
-if robotMode == "cdrc":
-    import opc
-
-    numLEDs = 40
-    client = opc.Client('localhost:7890')
-
-
-
-soundstart = time.time()
-#with open('cdrcsequences.txt', 'r') as the_file:
-with open(sys.argv[1], 'r') as the_file:
-    print ("opening sequence file: " + sys.argv[1])
-    sequenceConstant = json.load(the_file)
-
-sequence = {}
-sequenceRunning = False
-sequenceThatIsCurrentlyRunning = "none"
-
-sounds = {}
-def loadSounds():
-    global sounds, sequenceConstant
-    for soundKey, sound in sequenceConstant.iteritems():
-        #print ("sound for " + soundKey + ": " + sound['audio'])
-        try:
-            sounds[soundKey] = pygame.mixer.Sound(sound['audio'])
-        except:
-            print ("unable to load sound for " + soundKey + " (" + sound['audio'] + ")")
-        else:
-            print ("loaded sound for " + soundKey + ": " + sound['audio'])
-    #print (sounds)
-
-
-def playsound(_sound):
-    print ("playsound(" + str(_sound) + ")")
-    global sounds, sequenceConstant
-    print ("playing sound")
-
-    pygame.mixer.stop()
-
-    channel = sounds[_sound].play()
-
-
-def playSequence(_sequence):
-    print ("playSequence")
-    global robotMode, sequenceRunning, sequenceConstant, soundstart, sequence, cdrc_emotion, cdrc_jaw, cdrc_awakeAsleep, cdrc_emotionMask, cdrc_eyelidMask, cdrc_pupilMask, sequenceThatIsCurrentlyRunning
-    
-    try:
-        sequence = sequenceConstant[_sequence]['sequence'][:] # Make a copy!
-    except Exception as inst:
-        print (bcolors.FAIL)
-        print ("couldn't play sequence \"" + str(_sequence) + "\" (" + str(type(_sequence)) + ")")
-        print (type(inst))     # the exception instance
-        print (inst.args)      # arguments stored in .args
-        print (inst)           # __str__ allows args to printed directly
-        print (bcolors.ENDC)
-        return
-
-    # sequence = sequenceConstant['sequence1']['sequence']
-    soundstart = time.time()
-    #print ("this is happening")
-    sequenceRunning = True
-    sequenceThatIsCurrentlyRunning = _sequence
-    # sendSomething(robotMode + " playing sequence " + str(_sequence) + "\n")
-    if robotMode == "pumpkin":
-        print ("*** sequence: " + str(_sequence) + " ***")
-        if _sequence == "7":
-            #print ("it equals 7")
-            servos.moveServo(0, 60)  # hack for the video
-            servos.moveServo(1, 90)
-        else:
-            servos.moveServo(0, 90)
-            servos.moveServo(1, 90) # make the pumpkin look dead center when a sequence starts
-    elif robotMode == "cdrc":
-        resetCdrcPixels()
-
-    playsound(_sequence)
-
-
-
-def allPixelsFull():
-    print ("all pixels full")
-    pixels = [ (255, 255, 255) ] * 40
-    client.put_pixels(pixels)
-
-if robotMode == "cdrc":
-    allPixelsFull()
-
-
-
-
-
-def sequenceLoop():
-    global robotMode, masterPixelColor, masterPixelMultiplier, cdrc_emotion, cdrc_jaw, cdrc_awakeAsleep, cdrc_emotionMask, cdrc_eyelidMask, cdrc_pupilMask, cdrc_eyesLeftRight, cdrc_eyelids
-    print ("begin sequence loop")
-    nextMovement = datetime.datetime.now() + datetime.timedelta(seconds=3)
-    global soundstart, sequence, sequenceRunning
-    while 1:
-        #time.sleep(0.01)
-        if sequenceRunning:
-            #print ("sequenceRunning: " + str(sequenceRunning))
-            if len(sequence) > 0:
-                thisTime = time.time() - soundstart + 0.1  # the extra 0.1 is to sync up the audio with the animation
-                #print (thisTime)
-                #animationFramesThisPlaybackFrame = 0
-                for entryIndex, entry in enumerate(sequence):
-                #for entryKey in sequence.keys():
-                    #entry = sequence[entryKey]
-                    if thisTime > entry['time'] and thisTime < entry['time'] + 0.2:  # if it falls more than 0.2 seconds behind, skip it; we can afford to skip frames
-                        #animationFramesThisPlaybackFrame += 1
-                        print ("****")
-                        print ("time: " + str(thisTime))
-                        print ("time in file: " + str(entry['time']))
-
-                        #print (entry)
-                        if serialEnabled and robotMode == "pumpkin":
-                            if 'jaw' in entry:
-                                #jaw = pow(max(entry['jaw'] - 16, 0), 3) / 200
-                                #jaw = max(entry['jaw'] - 24, 0) * 3
-                                jaw = entry['jaw'] * 1.3
-                                servos.moveServo(2, jaw)
-                                #print (jaw)
-
-                            if 'pan' in entry:
-                                servos.moveServo(0, entry['pan'])
-                                print ("pan: " + str(entry['pan']))
-
-                            if 'tilt' in entry:
-                                tilt = entry['tilt']
-                                tilt = tilt - 10
-                                if tilt > 105:
-                                    tilt = 105
-                                servos.moveServo(1, tilt)
-                                print ("tilt: " + str(tilt))
-                        elif robotMode == "cdrc":
-                            pixels = range(40)
-
-                            if 'jaw' in entry:
-                                cdrc_jaw = entry['jaw']
-                                print ("cdrc_jaw: " + str(cdrc_jaw))
-
-                            if 'awakeAsleep' in entry:
-                                cdrc_awakeAsleep = entry['awakeAsleep']
-                                print ("cdrc_awakeAsleep: " + str(cdrc_awakeAsleep))
-
-                                if cdrc_awakeAsleep == 127:
-                                    masterPixelMultiplier = 0.5
-                                elif cdrc_awakeAsleep == 0:
-                                    masterPixelMultiplier = 0.125
-
-                            if 'emotion' in entry:
-                                cdrc_emotion = entry['emotion']
-                                print ("cdrc_emotion: " + str(cdrc_emotion))
-
-                                if cdrc_emotion < 57:  # sad
-                                    notblue = cdrc_emotion * 4
-                                    masterPixelColor = (notblue, notblue, 255)
-                                elif cdrc_emotion > 71:  # angry
-                                    notred = 255 - ((cdrc_emotion - 64) * 4)
-                                    masterPixelColor = (255, notred, notred)
-                                else:  # deadband neutral
-                                    masterPixelColor = (255, 255, 255)
-
-                                # and now the eyes
-                                emotionIndex = cdrc_emotion / (128 / 19)
-                                if emotionIndex == 0:
-                                    cdrc_emotionMask = (0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0)
-                                elif emotionIndex == 1:
-                                    cdrc_emotionMask = (0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0)
-                                elif emotionIndex == 2:
-                                    cdrc_emotionMask = (0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0)
-                                elif emotionIndex == 3:
-                                    cdrc_emotionMask = (0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0)
-                                elif emotionIndex == 4:
-                                    cdrc_emotionMask = (0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0)
-                                elif emotionIndex == 5:
-                                    cdrc_emotionMask = (0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0)
-                                elif emotionIndex >= 6 and emotionIndex <= 9:
-                                    cdrc_emotionMask = (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
-                                elif emotionIndex == 12:
-                                    cdrc_emotionMask = (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
-                                elif emotionIndex == 13:
-                                    cdrc_emotionMask = (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
-                                elif emotionIndex == 14:
-                                    cdrc_emotionMask = (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
-                                elif emotionIndex == 15:
-                                    cdrc_emotionMask = (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
-                                elif emotionIndex == 16:
-                                    cdrc_emotionMask = (0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0)
-                                elif emotionIndex >= 17:
-                                    cdrc_emotionMask = (0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0)
-
-                                print ("emotion index: " + str(emotionIndex))
-
-                            if 'eyesLeftRight' in entry:
-                                cdrc_eyesLeftRight = entry['eyesLeftRight']
-                                print ("cdrc_eyesLeftRight: " + str(cdrc_eyesLeftRight))
-
-                                pupilIndex = cdrc_eyesLeftRight / (8192 / 4)
-                                print (pupilIndex)
-                                if pupilIndex == -4:
-                                    cdrc_pupilMask = (1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0)
-                                elif pupilIndex == -3:
-                                    cdrc_pupilMask = (1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,1)
-                                elif pupilIndex == -2:
-                                    cdrc_pupilMask = (1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1)
-                                elif pupilIndex == -1:
-                                    cdrc_pupilMask = (1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1)
-                                elif pupilIndex == 0:
-                                    cdrc_pupilMask = (1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1)
-                                elif pupilIndex == 1:
-                                    cdrc_pupilMask = (1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1)
-                                elif pupilIndex == 2:
-                                    cdrc_pupilMask = (1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1)
-                                elif pupilIndex == 3:
-                                    cdrc_pupilMask = (1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1)
-                                elif pupilIndex == 4:
-                                    cdrc_pupilMask = (0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1)
-
-                                print ("pupil index: " + str(pupilIndex))
-
-                            drawEyes = False
-                            if 'eyesUp' in entry:
-                                cdrc_eyelids = -entry['eyesUp']
-                                print ("cdrc_eyelids: " + str(cdrc_eyelids))
-                                drawEyes = True
-
-                            if 'eyesDown' in entry:
-                                cdrc_eyelids = entry['eyesDown']
-                                # print ("cdrc_eyelids: " + str(cdrc_eyelids))
-                                drawEyes = True
-
-                            if drawEyes == True:
-                                eyelidIndex = cdrc_eyelids / (128 / 4)
-
-                                if eyelidIndex == -8:
-                                    cdrc_eyelidMask = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
-                                elif eyelidIndex == -7:
-                                    cdrc_eyelidMask = (0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0)
-                                elif eyelidIndex == -6:
-                                    cdrc_eyelidMask = (0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0)
-                                elif eyelidIndex == -5:
-                                    cdrc_eyelidMask = (0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0)
-                                elif eyelidIndex == -4:
-                                    cdrc_eyelidMask = (0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0)
-                                elif eyelidIndex == -3:
-                                    cdrc_eyelidMask = (0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0)
-                                elif eyelidIndex == -2:
-                                    cdrc_eyelidMask = (0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0)
-                                elif eyelidIndex == -1:
-                                    cdrc_eyelidMask = (0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0)
-                                elif eyelidIndex == 0:
-                                    cdrc_eyelidMask = (1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1)
-                                elif eyelidIndex == 1:
-                                    cdrc_eyelidMask = (1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1)
-                                elif eyelidIndex == 2:
-                                    cdrc_eyelidMask = (1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1)
-                                elif eyelidIndex == 3:
-                                    cdrc_eyelidMask = (1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1)
-                                elif eyelidIndex == 4:
-                                    cdrc_eyelidMask = (1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1)
-                                elif eyelidIndex == 5:
-                                    cdrc_eyelidMask = (1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1)
-                                elif eyelidIndex == 5:
-                                    cdrc_eyelidMask = (1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1)
-                                elif eyelidIndex == 6:
-                                    cdrc_eyelidMask = (1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1)
-                                elif eyelidIndex == 7:
-                                    cdrc_eyelidMask = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
-
-                                print ("eyelid index: " + str(eyelidIndex))
-                                # print (cdrc_eyelidMask)
-
-
-                                # if cdrc_eyesLeftRight < 200:
-                                #     for i in range(0, 8):  # the part that's always on
-                                #         cdrc_pupilMask[i] = 1
-                                #         cdrc_pupilMask[i + 16] = 1
-
-                                #     for i in range(0, pupilIndex):
-                                #         cdrc_pupilMask[8 + i] = 1
-                                #         cdrc_pupilMask[15 - i] = 1
-                                #         cdrc_pupilMask[24 + i] = 1
-                                #         cdrc_pupilMask[31 - i] = 1
-                                # elif cdrc_eyesLeftRight > 200:
-                                #     for i in range(0, 8):
-                                #         cdrc_pupilMask[8 + i] = 1
-                                #         cdrc_pupilMask[24 + i] = 1
-
-                                #     for i in range(0, pupilIndex):
-                                #         cdrc_pupilMask[i] = 1
-                                #         cdrc_pupilMask[7 - i] = 1
-                                #         cdrc_pupilMask[16 + i] = 1
-                                #         cdrc_pupilMask[23 - i] = 1
-                                # else:
-                                #     for i in range(0, 32):
-                                #         cdrc_pupilMask[i] = 1
-
-                                #print (cdrc_pupilMask)
-
-
-
-                                # if cdrc_eyesLeftRight < 60:
-                                #     pupilIndex = cdrc_eyesLeftRight / 8
-                                #     print (pupilIndex)
-                                #     for i in range(0, pupilIndex):
-                                #         cdrc_pupilMask[7 - i]  = 1
-                                #         cdrc_pupilMask[8 + i]  = 1
-                                #         cdrc_pupilMask[23 - i] = 1
-                                #         cdrc_pupilMask[24 + i] = 1
-                                # elif cdrc_eyesLeftRight > 68:
-                                #     pupilIndex = (cdrc_eyesLeftRight / 8) - 64
-                                #     print (pupilIndex)
-                                #     for i in range(0, pupilIndex):
-                                #         cdrc_pupilMask[0 + i]  = 1
-                                #         cdrc_pupilMask[15 - i] = 1
-                                #         cdrc_pupilMask[16 + i] = 1
-                                #         cdrc_pupilMask[31 - i] = 1
-                                # else:
-                                #     for i in range(0, 32):
-                                #         cdrc_pupilMask[i] = 1
-
-
-                            # and now it is time to draw
-                            # calculate the colors
-                            resultingColor = (masterPixelColor[0] * masterPixelMultiplier,
-                                masterPixelColor[1] * masterPixelMultiplier,
-                                masterPixelColor[2] * masterPixelMultiplier)
-
-                            # eyes
-                            for i in range(0, 32):
-                                pixels[i] = (resultingColor[0] * cdrc_emotionMask[i] * cdrc_pupilMask[i] * cdrc_eyelidMask[i],
-                                    resultingColor[1] * cdrc_emotionMask[i] * cdrc_pupilMask[i] * cdrc_eyelidMask[i],
-                                    resultingColor[2] * cdrc_emotionMask[i] * cdrc_pupilMask[i] * cdrc_eyelidMask[i])
-
-                            # mouth
-                            mouth1 = (0, 0, 0)
-                            mouth2 = (0, 0, 0)
-                            mouth3 = (0, 0, 0)
-                            mouth4 = (0, 0, 0)
-
-
-                            #print ("resulting color: " + str(resultingColor) + "(" + str(type(resultingColor)) + ")")
-
-                            #if jaw > 5:
-                            if cdrc_jaw > 1000:
-                                mouth1 = resultingColor
-
-                            #if jaw > 15: 
-                            if cdrc_jaw > 2000:
-                                mouth2 = resultingColor
-
-                            #if jaw > 22:
-                            if cdrc_jaw > 4000:
-                                mouth3 = resultingColor
-
-                            #ifcdrc_ jaw > 36:
-                            if cdrc_jaw > 6000:
-                                mouth4 = resultingColor
-
-                            pixels[32] = mouth4
-                            pixels[33] = mouth3
-                            pixels[34] = mouth2
-                            pixels[35] = mouth1
-                            pixels[36] = mouth1
-                            pixels[37] = mouth2
-                            pixels[38] = mouth3
-                            pixels[39] = mouth4
-
-                            client.put_pixels(pixels)
-
-
-
-                        try:
-                            del sequence[entryIndex]  # delete the entry from the list so we can be more efficient as the clip progresses??
-                        except Exception as inst:
-                            print (bcolors.FAIL)
-                            print ("Error deleting old sequence!")
-                            print (type(inst))     # the exception instance)
-                            print (inst.args)      # arguments stored in .args)
-                            print (inst)           # __str__ allows args to printed directly)
-                            print (bcolors.ENDC)
-                            stopSequence()
-                            #return
-
-                        break  #I'm gonna try doing this to kill the flickering
-                    # else:
-                    #     print ("****")
-                    #     print ("skipping " + str(entry['time']))
-                #time.sleep(0.02)
-                #print ("animation frames this playback frame: " + str(animationFramesThisPlaybackFrame))
-            else:
-                #print ("sequence length is less than zero")
-                #print (sequence)
-                stopSequence()
-                # sequenceRunning = False
-                # sendSomething(robotMode + " sequence finished\n")
-                # if robotMode == "cdrc":  # dim the lights
-                #     pixels = [ (32, 32, 32) ] * 40
-                #     client.put_pixels(pixels)
-        else:  # random head movement
-            if robotMode == "pumpkin":
-                if datetime.datetime.now() > nextMovement:
-                    print ("time for random motion")
-                    nextMovement = datetime.datetime.now() + datetime.timedelta(seconds=random.randrange(3, 8))
-                    servos.moveServo(0, random.randrange(85, 95))
-                    servos.moveServo(1, random.randrange(85, 95))
-
-
-
-def stopSequence():
-    global sequenceRunning, robotMode, sequenceThatIsCurrentlyRunning
-    sequenceThatIsCurrentlyRunning = "none"
-    sequenceRunning = False
-    # sendSomething(robotMode + " sequence finished\n")
-    if robotMode == "cdrc":  # dim the lights
-        pixels = [ (32, 32, 32) ] * 40
-        client.put_pixels(pixels)
-    elif robotMode == "pumpkin":
-        servos.moveServo(2, 0)  # close that mouth
-
-
-
 
 class ServoController:
+    """For use with a servo controller whose name I forget.  Pretty sure this part was 
+    grabbed wholesale from somewhere on the internet"""
     def __init__(self, controllerPort):
         self.serialCon = serial.Serial(controllerPort, baudrate=9600)
 
@@ -537,140 +65,436 @@ class ServoController:
     def map (self, x, in_min, in_max, out_min, out_max):
         return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
-if robotMode == "pumpkin":
-    print ("initializing servo controller")
-
-    servos = ServoController('/dev/ttyACM0')
-    servos.moveServo(0, 90)
-    servos.moveServo(1, 90)
-    servos.moveServo(2, 0)
 
 
+class Robot():
+    """Let's make a friggin' robot!  Can be a CDRC or a Pumpkinhead."""
+    def __init__(self, robotMode, sequencefile, nohardware=False):
+        self.robotMode = robotMode
+        self.sequencefile = sequencefile
+        self.nohardware = nohardware
 
-serialPerSecond = 0
-serialWrites    = 0
+        self.serialEnabled = False
 
-# if serialEnabled:
-#     interface = localserver()
+        print ("ROBOT MODE IS: " + self.robotMode)
 
-# start pygame
-pygame.mixer.pre_init(frequency=48000, buffer=1024, channels=2)
-pygame.mixer.init()
+        self.initSound()
+        self.loadSounds()
 
-loadSounds()
-
-
-
-# def parseIncoming(_incoming):
-#     commandIsForUs = False
-#     global sequenceConstant
-    
-#     if _incoming.find('playsequence') != -1:
-#         parsePlaySequence(_incoming)
-#         commandIsForUs = True
-
-#     if _incoming.find('printSequences') != -1:
-#         print (sequenceConstant)
-#         commandIsForUs = True
-
-#     if _incoming.find('stopaudio') != -1:
-#         pygame.mixer.stop()
-#         stopSequence()
-#         commandIsForUs = True
-
-#     if _incoming.find('ping') != -1:
-#         # sendSomething("pong\n")
-#         commandIsForUs = True
-
-#     if _incoming.find('resetpixels') != -1:
-#         resetCdrcPixels()
-#         commandIsForUs = True
-
-#     if _incoming.find('allpixelsfull') != -1:
-#         allPixelsFull()
-#         commandIsForUs = True
-
-#     if commandIsForUs == True:
-#         print (bcolors.OKGREEN + time.strftime("%Y-%m-%d %H:%I:%S") + " received: " + _incoming + bcolors.ENDC)
-#     else:
-#         print (bcolors.OKBLUE + "received: " + _incoming + bcolors.ENDC)
+        if self.robotMode == "cdrc":
+            self.resetCdrcPixels()
+            self.initOPC()
+            self.allPixelsFull()
+        elif self.robotMode == "pumpkinhead":
+            self.initServos()
 
 
-
-def requestHandler_index(_get):
-    return "text/plain", "commands:\n\nplaysequence/x\nstopaudio\nping"
-
-def requestHandler_playsequence(_get):
-    print ("playsequence function activated woo")
-    print (_get)
-    playSequence(_get[2])
-    return "text/plain", "playing sequence " + _get[2]
-
-
-def requestHandler_stopaudio(_get):
-    pygame.mixer.stop()
-    stopSequence()
-    commandIsForUs = True
-    return "text/plain", "stopping audio"
-
-def requestHandler_ping(_get):
-    return "text/plain", "pong"
-
-def requestHandler_getaudiostate(_get):
-    global sequenceThatIsCurrentlyRunning
-    return "text/plain", str(sequenceThatIsCurrentlyRunning)
+    def initServos(self):
+        """Set serial enabled and move servos to home positions."""
+        self.serialEnabled = True
+        if not self.nohardware:
+            self.servos = ServoController('/dev/ttyACM0')
+            self.servos.moveServo(0, 90)
+            self.servos.moveServo(1, 90)
+            self.servos.moveServo(2, 0)
 
 
-
-httpRequests = {'playsequence'      : requestHandler_playsequence,
-                'stopaudio'       : requestHandler_stopaudio,
-                'ping'       : requestHandler_ping,
-                'getaudiostate': requestHandler_getaudiostate,
-                }
-
-#This class will handles any incoming request from
-#the browser 
-class myHandler(BaseHTTPRequestHandler):
-    
-    #Handler for the GET requests
-    def do_GET(self):
-        elements = self.path.split('/')
-
-        responseFound = False
-        for httpRequest, httpHandler in httpRequests.iteritems():
-            if elements[1].find(httpRequest) == 0: # in other words, if the first part matches
-                contentType, response = httpHandler(elements)
-                responseFound = True
-
-                self.send_response(200)
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header('Content-type', contentType)
-                self.end_headers()
-
-                self.wfile.write(response)
-        if not responseFound:
-            contentType, response = requestHandler_index('/')
-
-            self.send_response(200)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header('Content-type', contentType)
-            self.end_headers()
-
-            self.wfile.write(response)
             
-        return
+
+    def resetCdrcPixels(self):
+        """Set CDRC pixels to their default state."""
+        print ("resetting self.pixels")
+        self.mainPixelMultiplier = 1.0
+        self.mainPixelColor      = [255, 255, 255]
+        self.cdrc_emotion       = 64
+        self.cdrc_jaw           = 0
+        self.cdrc_awakeAsleep   = 0
+        self.cdrc_eyesLeftRight = 0
+        self.cdrc_eyelids       = 0
+        self.cdrc_emotionMask   = [1 for x in range(0, 32)]
+        self.cdrc_eyelidMask    = [1 for x in range(0, 32)]
+        self.cdrc_pupilMask     = [1 for x in range(0, 32)]
 
 
 
-print ("hello.")
+    def initOPC(self):
+        """Initialize the OpenPixelControl library (for use with a FadeCandy, which is now 
+        unfortunately defunct.)"""
+        if not self.nohardware:
+            import opc
+            self.client = opc.Client('localhost:7890')
+
+    
+
+    def initSound(self):
+        """Get all the sound-related stuff initialized."""
+        self.soundstart = time.time()
+        with open(sys.argv[1], 'r') as the_file:
+            print ("opening sequence file: " + sys.argv[1])
+            self.sequenceConstant = json.load(the_file)
+
+        self.sequence = {}
+        self.sequenceRunning = False
+        self.sequenceThatIsCurrentlyRunning = "none"
+
+        pygame.mixer.pre_init(frequency=48000, buffer=1024, channels=2)
+        pygame.mixer.init()
 
 
-sequenceLoopThread = Thread(target=sequenceLoop)
-sequenceLoopThread.daemon = True
-sequenceLoopThread.start()
+    def loadSounds(self):
+        """Load all the .wav files of dialogue based on the provided json file."""
+        self.sounds = {}
+        for soundKey, sound in self.sequenceConstant.items():
+            try:
+                self.sounds[soundKey] = pygame.mixer.Sound(sound['audio'])
+            except:
+                traceback.print_exc()
+                print ("unable to load sound for " + soundKey + " (" + sound['audio'] + ")")
+            else:
+                print ("loaded sound for " + soundKey + ": " + sound['audio'])
 
-while 1:
-    server = HTTPServer(('', PORT_NUMBER), myHandler)
-    print ('Started httpserver on port ' , PORT_NUMBER)
 
-    server.serve_forever()
+
+
+
+    def playsound(self, _sound):
+        """Play the specified already-loaded sound (but stop any existing sounds first)."""
+        print ("playsound(" + str(_sound) + ")")
+        print ("playing sound")
+
+        pygame.mixer.stop()
+
+        self.channel = self.sounds[_sound].play()
+
+
+    def playSequence(self, _sequence):
+        """Simultaneously play an audio file and start a servo or LED sequence
+        and pray they stay in sync (they do consistently enough that I'm not
+        super concerned about keeping things more manually synced up).)"""
+
+        print ("playSequence {s}".format(s=_sequence))
+        
+        try:
+            self.sequence = self.sequenceConstant[_sequence]['sequence'][:] # Make a copy!
+        except:
+            print ("couldn't play sequence \"" + str(_sequence) + "\" (" + str(type(_sequence)) + ")")
+            traceback.print_exc()
+            return
+
+        self.soundstart = time.time()
+        self.sequenceRunning = True
+        self.sequenceThatIsCurrentlyRunning = _sequence
+        if self.robotMode == "pumpkin":
+            print ("*** sequence: " + str(_sequence) + " ***")
+            if not self.nohardware:
+                if _sequence == "7":
+                    self.servos.moveServo(0, 60)  # hack for the video
+                    self.servos.moveServo(1, 90)
+                else:
+                    self.servos.moveServo(0, 90)
+                    self.servos.moveServo(1, 90) # make the pumpkin look dead center when a sequence starts
+        elif self.robotMode == "cdrc":
+            self.resetCdrcPixels()
+
+        self.playsound(_sequence)
+
+
+
+    def allPixelsFull(self):
+        """All pixels to full (white)."""
+        print ("all pixels full")
+        self.pixels = [ (255, 255, 255) ] * 40
+        if not self.nohardware:
+            self.client.put_pixels(self.pixels)
+
+
+
+
+    def sequenceLoop(self):
+        """Continuous, independently-threaded loop that serves as an animation player /
+        frame progressor."""
+        print ("begin sequence loop")
+        self.nextMovement = datetime.datetime.now() + datetime.timedelta(seconds=3)
+        while True:
+            if self.sequenceRunning and len(self.sequence) > 0:
+                thisTime = time.time() - self.soundstart + 0.1  # the extra 0.1 is to sync up the audio with the animation
+                for entryIndex, entry in enumerate(self.sequence):
+                    if thisTime > entry['time'] and thisTime < entry['time'] + 0.2:  # if it falls more than 0.2 seconds behind, skip it; we can afford to skip frames                                                    
+                        print ("{rm} - time: {t}  time in file: {tif}".format(
+                            rm=self.robotMode,
+                            t=round(thisTime, 3),
+                            tif= entry['time']
+                        ))
+
+                        if self.serialEnabled and self.robotMode == "pumpkin":
+                            self.sequenceFramePumpkin(entry)
+                            
+                        elif self.robotMode == "cdrc":
+                            self.sequenceFrameCDRC(entry)
+
+                        try:
+                            del self.sequence[entryIndex]  # delete the entry from the list so we can be more efficient as the clip progresses??
+                        except:
+                            print ("Error deleting old sequence!")
+                            traceback.print_exc()
+                            self.stopSequence()
+
+
+            else:  # random head movement
+                if self.robotMode == "pumpkin":
+                    if datetime.datetime.now() > self.nextMovement:
+                        print ("time for random motion")
+                        self.nextMovement = datetime.datetime.now() + datetime.timedelta(seconds=random.randrange(3, 8))
+                        if not self.nohardware:
+                            self.servos.moveServo(0, random.randrange(85, 95))
+                            self.servos.moveServo(1, random.randrange(85, 95))
+
+            time.sleep(0.01)
+
+
+    def sequenceFramePumpkin(self, entry):
+        """Manages all animation frames for Pumpkinhead or similar servo-based bot."""
+        if 'jaw' in entry:
+            jaw = entry['jaw'] * 1.3
+            if not self.nohardware:
+                self.servos.moveServo(2, jaw)
+
+        if 'pan' in entry:
+            if not self.nohardware:
+                self.servos.moveServo(0, entry['pan'])
+            print ("pan: " + str(entry['pan']))
+
+        if 'tilt' in entry:
+            tilt = entry['tilt']
+            tilt = tilt - 10
+            if tilt > 105:
+                tilt = 105
+            if not self.nohardware:
+                self.servos.moveServo(1, tilt)
+            print ("tilt: " + str(tilt))
+
+
+    def sequenceFrameCDRC(self, entry):
+        """Manages all animation frames for CDRC or similar pixel-based bot."""
+        self.pixels = [0] * 40
+
+        if 'jaw' in entry:
+            self.cdrc_jaw = entry['jaw']
+            print ("cdrc_jaw: " + str(self.cdrc_jaw))
+
+        if 'awakeAsleep' in entry:
+            self.cdrc_awakeAsleep = entry['awakeAsleep']
+            print ("cdrc_awakeAsleep: " + str(self.cdrc_awakeAsleep))
+
+            if self.cdrc_awakeAsleep == 127:
+                self.mainPixelMultiplier = 0.5
+            elif self.cdrc_awakeAsleep == 0:
+                self.mainPixelMultiplier = 0.125
+
+        if 'emotion' in entry:
+            self.cdrc_emotion = entry['emotion']
+            print ("cdrc_emotion: " + str(self.cdrc_emotion))
+
+            if self.cdrc_emotion < 57:  # sad
+                notblue = self.cdrc_emotion * 4
+                self.mainPixelColor = (notblue, notblue, 255)
+            elif self.cdrc_emotion > 71:  # angry
+                notred = 255 - ((self.cdrc_emotion - 64) * 4)
+                self.mainPixelColor = (255, notred, notred)
+            else:  # deadband neutral
+                self.mainPixelColor = (255, 255, 255)
+
+            # and now the eyes
+            self.emotionIndex = int(self.cdrc_emotion / (128 / 19))
+            emotions = {
+                0: (0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0),
+                1: (0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0),
+                2: (0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0),
+                3: (0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0),
+                4: (0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0),
+                5: (0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0),
+                6: (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                7: (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                8: (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                9: (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                10: (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                11: (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                12: (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                13: (1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                14: (0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0),
+                15: (0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0),
+            }
+            self.cdrc_emotionMask = emotions[self.emotionIndex]
+
+
+        # eyes looking left and right
+        if 'eyesLeftRight' in entry:
+            self.cdrc_eyesLeftRight = entry['eyesLeftRight']
+
+            self.pupilIndex = self.cdrc_eyesLeftRight / (8192 / 4)
+            pupils = {
+                -4: (1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0),
+                -3: (1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,1),
+                -2: (1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1),
+                -1: (1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1),
+                0: (1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1),
+                1: (1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1),
+                2: (1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1),
+                3: (1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1),
+                4: (0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1)
+            }
+            self.cdrc_pupilMask = pupils[self.pupilIndex]
+            print ("pupil index: " + str(self.pupilIndex))
+
+
+        # eyes up or down
+        drawEyes = False
+        if 'eyesUp' in entry:
+            cdrc_eyelids = -entry['eyesUp']
+            print ("cdrc_eyelids: " + str(cdrc_eyelids))
+            drawEyes = True
+
+        if 'eyesDown' in entry:
+            self.cdrc_eyelids = entry['eyesDown']
+            drawEyes = True
+
+        if drawEyes == True:
+            eyelidIndex = cdrc_eyelids / (128 / 4)
+
+            eyelids = {
+                -8: (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0),
+                -7: (0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0),
+                -6: (0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0),
+                -5: (0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0),
+                -4: (0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0),
+                -3: (0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0),
+                -2: (0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0),
+                -1: (0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0),
+                0: (1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1),
+                1: (1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1),
+                2: (1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1),
+                3: (1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1),
+                4: (1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1),
+                5: (1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,1,1,1),
+                6: (1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1),
+                7: (1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1),
+                8: (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
+            }
+            self.eyelidMask = eyelids[eyelidIndex]
+
+
+        # and now it is time to draw
+        # calculate the colors
+        resultingColor = (self.mainPixelColor[0] * self.mainPixelMultiplier,
+            self.mainPixelColor[1] * self.mainPixelMultiplier,
+            self.mainPixelColor[2] * self.mainPixelMultiplier)
+
+        # final processing
+        for i in range(0, 32):
+            self.pixels[i] = (resultingColor[0] * self.cdrc_emotionMask[i] * self.cdrc_pupilMask[i] * self.cdrc_eyelidMask[i],
+                resultingColor[1] * self.cdrc_emotionMask[i] * self.cdrc_pupilMask[i] * self.cdrc_eyelidMask[i],
+                resultingColor[2] * self.cdrc_emotionMask[i] * self.cdrc_pupilMask[i] * self.cdrc_eyelidMask[i])
+
+        # mouth
+        mouth1 = (0, 0, 0)
+        mouth2 = (0, 0, 0)
+        mouth3 = (0, 0, 0)
+        mouth4 = (0, 0, 0)
+
+
+        if self.cdrc_jaw > 1000:
+            mouth1 = resultingColor
+ 
+        if self.cdrc_jaw > 2000:
+            mouth2 = resultingColor
+
+        if self.cdrc_jaw > 4000:
+            mouth3 = resultingColor
+
+        if self.cdrc_jaw > 6000:
+            mouth4 = resultingColor
+
+        self.pixels[32] = mouth4
+        self.pixels[33] = mouth3
+        self.pixels[34] = mouth2
+        self.pixels[35] = mouth1
+        self.pixels[36] = mouth1
+        self.pixels[37] = mouth2
+        self.pixels[38] = mouth3
+        self.pixels[39] = mouth4
+
+        # and finally, write the pixels to the FadeCandy (once again and much to my disappointment, defunct)
+        if not self.nohardware:
+            self.client.put_pixels(self.pixels)
+
+
+
+    def stopSequence(self):
+        """E-stop for both audio and animation."""
+        self.sequenceThatIsCurrentlyRunning = "none"
+        self.sequenceRunning = False
+
+        if self.robotMode == "cdrc":  # dim the lights
+            self.pixels = [ (32, 32, 32) ] * 40
+            if not self.nohardware:
+                self.client.put_pixels(self.pixels)
+        elif self.robotMode == "pumpkin":
+            if not self.nohardware:
+                self.servos.moveServo(2, 0)  # close that mouth
+
+
+
+# Let's get webserver stuff configured (recently converted to Flask for modernization's sake).
+app = Flask(__name__)
+
+
+@app.route("/")
+def r_index():
+    """Let the user know what HTTP-based commands are available."""
+    return Response("commands:\n\nplaysequence/x\nstopaudio\nping", mimetype="text/plain")
+
+@app.route("/playsequence/<path:path>")
+def r_playsequence(path):
+    """Play the specified sequence."""
+    print ("playsequence function activated woo")
+    robot.playSequence(path)
+    return Response("playing sequence " + path, mimetype="text/plain")
+
+@app.route("/stopaudio")
+def r_stopaudio():
+    """Stop audio and animation."""
+    pygame.mixer.stop()
+    robot.stopSequence()
+    return Response("stopping audio", mimetype="text/plain")
+
+@app.route("/ping")
+def r_ping():
+    """Used by controller software to make sure this bot is in working order."""
+    return Response("pong", mimetype="text/plain")
+
+@app.route("/getaudiostate")
+def r_getaudiostate():
+    """Tell the controller what audio/animation is currently being played."""
+    return Response(str(robot.sequenceThatIsCurrentlyRunning), mimetype="text/plain")
+
+
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("sequences")
+    parser.add_argument("robotype")
+    parser.add_argument("--nohardware")
+    args = parser.parse_args()
+
+    robot = Robot(args.robotype, args.sequences, args.nohardware == "true")
+
+
+    # Start the animation loop
+    sequenceLoopThread = Thread(target=robot.sequenceLoop)
+    sequenceLoopThread.daemon = True
+    sequenceLoopThread.start()
+
+    # Run a Flask dev server (probably not worth doing the whole WSGI thing))
+    app.run(debug=True, host="0.0.0.0", port=5001)
