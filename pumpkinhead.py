@@ -40,31 +40,6 @@ from flask import Flask, Response
 
 
 
-class ServoController:
-    """For use with a servo controller whose name I forget.  Pretty sure this part was 
-    grabbed wholesale from somewhere on the internet"""
-    def __init__(self, controllerPort):
-        self.serialCon = serial.Serial(controllerPort, baudrate=9600)
-
-    def moveServo(self, channel, target):
-        if channel == 1 and target > 113:
-            target = 113
-            print (target)
-        target = (self.map(target, 0, 180, 656, 2500) * 4) #Map the target angle to the corresponding PWM pulse.
-
-        commandByte = chr(0x84)
-        channelByte = chr(channel)
-        lowTargetByte = chr(int(target) & 0x7F)
-        highTargetByte = chr((int(target) >> 7) & 0x7F)
-
-        command = commandByte + channelByte + lowTargetByte + highTargetByte
-        self.serialCon.write(command)
-        self.serialCon.flush()
-
-        return target
-
-    def map (self, x, in_min, in_max, out_min, out_max):
-        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
 
 
@@ -442,6 +417,35 @@ class Robot():
         elif self.robotMode == "pumpkin":
             if not self.nohardware:
                 self.servos.moveServo(2, 0)  # close that mouth
+
+
+
+
+class ServoController:
+    """For use with a servo controller whose name I forget.  Pretty sure this part was 
+    grabbed wholesale from somewhere on the internet"""
+    def __init__(self, controllerPort):
+        self.serialCon = serial.Serial(controllerPort, baudrate=9600)
+
+    def moveServo(self, channel, target):
+        if channel == 1 and target > 113:
+            target = 113
+            print (target)
+        target = (self.map(target, 0, 180, 656, 2500) * 4) #Map the target angle to the corresponding PWM pulse.
+
+        commandByte = chr(0x84)
+        channelByte = chr(channel)
+        lowTargetByte = chr(int(target) & 0x7F)
+        highTargetByte = chr((int(target) >> 7) & 0x7F)
+
+        command = commandByte + channelByte + lowTargetByte + highTargetByte
+        self.serialCon.write(command)
+        self.serialCon.flush()
+
+        return target
+
+    def map (self, x, in_min, in_max, out_min, out_max):
+        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
 
 
 
