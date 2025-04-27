@@ -184,6 +184,7 @@ class Robot():
                 if self.sequenceRunning:
                     self.sequenceRunning = False
                     self.sequenceThatIsCurrentlyRunning = None
+                    print ("sequence finished")
 
                 # random head movement
                 if self.robotMode == "pumpkin":
