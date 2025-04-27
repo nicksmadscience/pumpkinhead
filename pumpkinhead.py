@@ -1,29 +1,9 @@
 #!/usr/bin/env python 
 """Code that runs the Halloween robots CDRC and Pumpkinhead."""
 
-
-
-import time
-import pygame
-import traceback
-import serial
-
-
+import time, pygame, traceback, serial, sys, random, datetime, json
 from threading import Thread
-import json
-
-# for choosing between cdrc and the pumpkin head via the command line
-import sys
-
-# for random pumpkin head movement!
-import random
-import datetime
-
 from flask import Flask, Response
-
-
-
-
 
 
 ## CDRC SETUP ##
@@ -36,11 +16,6 @@ from flask import Flask, Response
 ## PUMPKIN SETUP ##
 # cd pumpkinhead
 # python pump*py pump*txt pumpkin
-
-
-
-
-
 
 
 class Robot():
