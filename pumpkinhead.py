@@ -6,16 +6,6 @@ from threading import Thread
 from flask import Flask, Response, render_template
 
 
-## CDRC SETUP ##
-# screen
-# sudo /usr/local/bin/fcserver
-# (exit screen)
-# cd cdrc
-# python pumpkinhead.py cdrcsequences.txt cdrc
-
-## PUMPKIN SETUP ##
-# cd pumpkinhead
-# python pump*py pump*txt pumpkin
 
 
 class Robot():
@@ -156,7 +146,10 @@ class Robot():
         """Continuous, independently-threaded loop that serves as an animation player /
         frame progressor."""
         print ("begin sequence loop")
+
+        # kick off first random movement
         self.nextMovement = datetime.datetime.now() + datetime.timedelta(seconds=3)
+
         while True:
             if self.sequenceRunning and len(self.sequence) > 0:
                 thisTime = time.time() - self.soundstart + 0.1  # the extra 0.1 is to sync up the audio with the animation
@@ -177,7 +170,7 @@ class Robot():
                         try:
                             del self.sequence[frameIndex]  # delete the frame from the list so we can be more efficient as the clip progresses??
                         except:
-                            print ("Error deleting old sequence!")
+                            print ("Error deleting frame!")
                             traceback.print_exc()
                             self.stopSequence()
             else:  
@@ -199,7 +192,7 @@ class Robot():
 
 
     def sequenceFramePumpkin(self, frame):
-        """Manages all animation frames for Pumpkinhead or similar servo-based bot."""
+        """Manages all animation frames for a Pumpkinhead or similar servo-based bot."""
         if 'jaw' in frame:
             jaw = frame['jaw'] * 1.3
             if not self.nohardware:
@@ -221,7 +214,7 @@ class Robot():
 
 
     def sequenceFrameCDRC(self, frame):
-        """Manages all animation frames for CDRC or similar pixel-based bot."""
+        """Manages all animation frames for a CDRC or similar pixel-based bot."""
         self.pixels = [0] * 40
 
         if 'jaw' in frame:

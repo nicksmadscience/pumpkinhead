@@ -1,0 +1,10 @@
+## CDRC SETUP ##
+# screen
+# sudo /usr/local/bin/fcserver
+# (exit screen)
+# cd cdrc
+# python pumpkinhead.py cdrcsequences.txt cdrc
+
+## PUMPKIN SETUP ##
+# cd pumpkinhead
+# python pump*py pump*txt pumpkin
