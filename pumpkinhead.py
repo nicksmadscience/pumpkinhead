@@ -52,8 +52,6 @@ class Robot():
             self.servos.moveServo(2, 0)
 
 
-            
-
     def resetCdrcPixels(self):
         """Set CDRC pixels to their default state."""
         print ("resetting self.pixels")
@@ -69,7 +67,6 @@ class Robot():
         self.cdrc_pupilMask     = [1 for x in range(0, 32)]
 
 
-
     def initOPC(self):
         """Initialize the OpenPixelControl library (for use with a FadeCandy, which is now 
         unfortunately defunct.)"""
@@ -78,7 +75,6 @@ class Robot():
             self.client = opc.Client('localhost:7890')
 
     
-
     def initSound(self):
         """Get all the sound-related stuff initialized."""
         self.soundstart = time.time()
@@ -107,13 +103,9 @@ class Robot():
                 print ("loaded sound for " + soundKey + ": " + sound['audio'])
 
 
-
-
-
     def playsound(self, _sound):
         """Play the specified already-loaded sound (but stop any existing sounds first)."""
         print ("playsound(" + str(_sound) + ")")
-        print ("playing sound")
 
         pygame.mixer.stop()
 
@@ -152,15 +144,12 @@ class Robot():
         self.playsound(_sequence)
 
 
-
     def allPixelsFull(self):
         """All pixels to full (white)."""
         print ("all pixels full")
         self.pixels = [ (255, 255, 255) ] * 40
         if not self.nohardware:
             self.client.put_pixels(self.pixels)
-
-
 
 
     def sequenceLoop(self):
@@ -191,8 +180,6 @@ class Robot():
                             print ("Error deleting old sequence!")
                             traceback.print_exc()
                             self.stopSequence()
-
-
             else:  
                 if self.sequenceRunning:
                     self.sequenceRunning = False
@@ -386,7 +373,6 @@ class Robot():
             self.client.put_pixels(self.pixels)
 
 
-
     def stopSequence(self):
         """E-stop for both audio and animation."""
         self.sequenceThatIsCurrentlyRunning = None
@@ -409,6 +395,7 @@ class ServoController:
     def __init__(self, controllerPort):
         self.serialCon = serial.Serial(controllerPort, baudrate=9600)
 
+
     def moveServo(self, channel, target):
         if channel == 1 and target > 113:
             target = 113
@@ -426,8 +413,10 @@ class ServoController:
 
         return target
 
+
     def map (self, x, in_min, in_max, out_min, out_max):
         return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
+
 
 
 
@@ -445,7 +434,6 @@ def r_index():
         sequenceRunning = robot.sequenceRunning,
         sequenceThatIsCurrentlyRunning = robot.sequenceThatIsCurrentlyRunning
     )
-
 
 
 @app.route("/playsequence/<path:path>")
@@ -477,6 +465,7 @@ def r_getaudiostate():
 
 
 
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
@@ -486,7 +475,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     robot = Robot(args.robotype, args.sequences, args.nohardware == "true")
-
 
     # Start the animation loop
     sequenceLoopThread = Thread(target=robot.sequenceLoop)
