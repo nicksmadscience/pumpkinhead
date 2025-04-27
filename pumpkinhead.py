@@ -3,7 +3,7 @@
 
 import time, pygame, traceback, serial, sys, random, datetime, json
 from threading import Thread
-from flask import Flask, Response
+from flask import Flask, Response, render_template
 
 
 ## CDRC SETUP ##
@@ -29,15 +29,17 @@ class Robot():
 
         print ("ROBOT MODE IS: " + self.robotMode)
 
-        self.initSound()
-        self.loadSounds()
-
         if self.robotMode == "cdrc":
             self.resetCdrcPixels()
             self.initOPC()
             self.allPixelsFull()
         elif self.robotMode == "pumpkinhead":
             self.initServos()
+        else:
+            raise ValueError("robot can only be a CDRC or a Pumpkinhead")
+        
+        self.initSound()
+        self.loadSounds()
 
 
     def initServos(self):
@@ -86,7 +88,7 @@ class Robot():
 
         self.sequence = {}
         self.sequenceRunning = False
-        self.sequenceThatIsCurrentlyRunning = "none"
+        self.sequenceThatIsCurrentlyRunning = None
 
         pygame.mixer.pre_init(frequency=48000, buffer=1024, channels=2)
         pygame.mixer.init()
@@ -191,7 +193,12 @@ class Robot():
                             self.stopSequence()
 
 
-            else:  # random head movement
+            else:  
+                if self.sequenceRunning:
+                    self.sequenceRunning = False
+                    self.sequenceThatIsCurrentlyRunning = None
+
+                # random head movement
                 if self.robotMode == "pumpkin":
                     if datetime.datetime.now() > self.nextMovement:
                         print ("time for random motion")
@@ -382,7 +389,7 @@ class Robot():
 
     def stopSequence(self):
         """E-stop for both audio and animation."""
-        self.sequenceThatIsCurrentlyRunning = "none"
+        self.sequenceThatIsCurrentlyRunning = None
         self.sequenceRunning = False
 
         if self.robotMode == "cdrc":  # dim the lights
@@ -431,7 +438,15 @@ app = Flask(__name__)
 @app.route("/")
 def r_index():
     """Let the user know what HTTP-based commands are available."""
-    return Response("commands:\n\nplaysequence/x\nstopaudio\nping", mimetype="text/plain")
+    # return Response("commands:\n\nplaysequence/x\nstopaudio\nping", mimetype="text/plain")
+    return render_template("index.html",
+        robotMode = robot.robotMode,
+        sequence = robot.sequence,
+        sequenceRunning = robot.sequenceRunning,
+        sequenceThatIsCurrentlyRunning = robot.sequenceThatIsCurrentlyRunning
+    )
+
+
 
 @app.route("/playsequence/<path:path>")
 def r_playsequence(path):
@@ -440,6 +455,7 @@ def r_playsequence(path):
     robot.playSequence(path)
     return Response("playing sequence " + path, mimetype="text/plain")
 
+
 @app.route("/stopaudio")
 def r_stopaudio():
     """Stop audio and animation."""
@@ -447,16 +463,17 @@ def r_stopaudio():
     robot.stopSequence()
     return Response("stopping audio", mimetype="text/plain")
 
+
 @app.route("/ping")
 def r_ping():
     """Used by controller software to make sure this bot is in working order."""
     return Response("pong", mimetype="text/plain")
 
+
 @app.route("/getaudiostate")
 def r_getaudiostate():
     """Tell the controller what audio/animation is currently being played."""
     return Response(str(robot.sequenceThatIsCurrentlyRunning), mimetype="text/plain")
-
 
 
 
