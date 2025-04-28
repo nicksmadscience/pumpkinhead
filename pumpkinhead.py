@@ -15,10 +15,11 @@ class Robot():
         self.sequencefile = sequencefile
         self.nohardware = nohardware
 
-        self.serialEnabled = False
+        self.serialEnabled = False  # it occurs to me that the newly-renovated init scheme might be somewhat inconsistent
 
-        print ("ROBOT MODE IS: " + self.robotMode)
+        print ("ROBOT MODE IS: " + self.robotMode) # the user must know
 
+        # set stuff up and/or initialize vars
         if self.robotMode == "cdrc":
             self.resetCdrcPixels()
             self.initOPC()
@@ -26,7 +27,7 @@ class Robot():
         elif self.robotMode == "pumpkinhead":
             self.initServos()
         else:
-            raise ValueError("robot can only be a CDRC or a Pumpkinhead")
+            raise ValueError("robot can only be a CDRC or a Pumpkinhead") # for now, mwahahaha!!/
         
         self.initSound()
         self.loadSounds()
@@ -36,7 +37,7 @@ class Robot():
         """Set serial enabled and move servos to home positions."""
         self.serialEnabled = True
         if not self.nohardware:
-            self.servos = ServoController('/dev/ttyACM0')
+            self.servos = ServoController('/dev/ttyACM0') # TODO: i should probably get around to documenting the whole servo config, huh
             self.servos.moveServo(0, 90)
             self.servos.moveServo(1, 90)
             self.servos.moveServo(2, 0)
@@ -44,6 +45,8 @@ class Robot():
 
     def resetCdrcPixels(self):
         """Set CDRC pixels to their default state."""
+        # TODO: also provide more details on pixel / FadeCandy setup
+        # # yo dawg i'm just a little emotional about the whole fadecandy situation because that thing rocked
         print ("resetting self.pixels")
         self.mainPixelMultiplier = 1.0
         self.mainPixelColor      = [255, 255, 255]
@@ -76,7 +79,7 @@ class Robot():
         self.sequenceRunning = False
         self.sequenceThatIsCurrentlyRunning = None
 
-        pygame.mixer.pre_init(frequency=48000, buffer=1024, channels=2)
+        pygame.mixer.pre_init(frequency=48000, buffer=1024, channels=2) # was honestly surprised that pygame worked on my mac
         pygame.mixer.init()
 
 
