@@ -222,11 +222,9 @@ class Robot():
 
         if 'jaw' in frame:
             self.cdrc_jaw = frame['jaw']
-            print ("cdrc_jaw: " + str(self.cdrc_jaw))
 
         if 'awakeAsleep' in frame:
             self.cdrc_awakeAsleep = frame['awakeAsleep']
-            print ("cdrc_awakeAsleep: " + str(self.cdrc_awakeAsleep))
 
             if self.cdrc_awakeAsleep == 127:
                 self.mainPixelMultiplier = 0.5
@@ -235,7 +233,6 @@ class Robot():
 
         if 'emotion' in frame:
             self.cdrc_emotion = frame['emotion']
-            print ("cdrc_emotion: " + str(self.cdrc_emotion))
 
             if self.cdrc_emotion < 57:  # sad
                 notblue = self.cdrc_emotion * 4
@@ -286,14 +283,12 @@ class Robot():
                 4:  (0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1)
             }
             self.cdrc_pupilMask = pupils[self.pupilIndex]
-            print ("pupil index: " + str(self.pupilIndex))
 
 
         # eyes up or down
         drawEyes = False
         if 'eyesUp' in frame:
             cdrc_eyelids = -frame['eyesUp']
-            print ("cdrc_eyelids: " + str(cdrc_eyelids))
             drawEyes = True
 
         if 'eyesDown' in frame:
@@ -471,7 +466,7 @@ if __name__ == "__main__":
     parser.add_argument("--nohardware")
     args = parser.parse_args()
 
-    robot = Robot(args.robotype, args.sequences, args.nohardware == "true")
+    robot = Robot(args.robotype, args.sequences, "nohardware" in args)
 
     # Start the animation loop
     sequenceLoopThread = Thread(target=robot.sequenceLoop)
