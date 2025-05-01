@@ -37,7 +37,12 @@ class Robot():
         """Set serial enabled and move servos to home positions."""
         self.serialEnabled = True
         if not self.nohardware:
-            self.servos = ServoController('/dev/ttyACM0') # TODO: i should probably get around to documenting the whole servo config, huh
+            # it's a Pololu Micro Maestro (looks like it's still available: https://www.pololu.com/product/1350/specs)
+            # servo config as far as i can remember
+            # channel 0: x / pan
+            # channel 1: y / tilt
+            # channel 2: z / jaw
+            self.servos = ServoController('/dev/ttyACM0') 
             self.servos.moveServo(0, 90)
             self.servos.moveServo(1, 90)
             self.servos.moveServo(2, 0)
